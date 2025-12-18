@@ -1,55 +1,69 @@
 pipeline {
     agent any
-    
+
     tools {
         maven 'M2_HOME'
         jdk 'JAVA_HOME'
     }
-    
+
     environment {
         IMAGE_NAME = 'sahar2002/spring-app'
         DOCKER_USER = 'sahar2002'
     }
-    
+
     stages {
         stage('Checkout') {
             steps {
                 deleteDir()
-                
                 git branch: 'main', 
                     url: 'https://github.com/sahar-bg/ProjetSpring.git'
-                echo 'Code téléchargé avec succès'
+                echo '✅ Code téléchargé avec succès'
             }
         }
-        
+
         stage('Clean') {
             steps {
                 sh 'mvn clean'
             }
         }
-        
-        stage('Compiling') {
+
+        stage('Compile') {
             steps {
                 sh 'mvn compile'
             }
         }
-        
-        stage('SonarQube') {
+
+        stage('SonarQube Analysis') {
             steps {
-                withCredentials([string(credentialsId: 'token-sonar',
-                                        variable: 'SONAR_TOKEN')]) {
-                    sh "mvn sonar:sonar -Dsonar.login=${SONAR_TOKEN}"
+                // Remplace 'sonar' par le nom exact de ton installation SonarQube dans Jenkins
+                withSonarQubeEnv('sonar') {
+                    sh 'mvn sonar:sonar'
                 }
             }
         }
-        
-        stage('Build image') {
+
+        stage('Quality Gate') {
+            steps {
+                script {
+                    timeout(time: 3, unit: 'MINUTES') {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "❌ Quality Gate échoué: ${qg.status}"
+                        } else {
+                            echo "✅ Quality Gate réussi: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+
+        stage('Build Docker Image') {
             steps {
                 sh "docker build -t ${IMAGE_NAME} ."
             }
         }
-        
-        stage('Push Docker') {
+
+        stage('Push Docker Image') {
             steps {
                 withCredentials([usernamePassword(credentialsId: 'docker-token',
                                                   usernameVariable: 'DOCKER_USER',
@@ -63,7 +77,7 @@ pipeline {
             }
         }
     }
-    
+
     post {
         always {
             echo '=== POST ACTIONS ==='
